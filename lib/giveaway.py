@@ -1,15 +1,15 @@
 import asyncio
-import getpass
-import logging
-import json
-import re
-import numpy
 import base64
+import getpass
+import random
+import re
+import time
+
+from colorama import init, Fore, Style
 from pyppeteer import launch, errors
-from lib.prize import GiveAwayPrize
-from colorama import init, Fore, Back, Style
 from tinydb import TinyDB, Query
-from bs4 import BeautifulSoup
+
+from lib.prize import GiveAwayPrize
 
 db = TinyDB('db.json')
 
@@ -59,9 +59,9 @@ def visit_page(url):
 
         
 class GiveAwayBot(object):
-    def __init__(self):
-        self.email = None
-        self.password = None
+    def __init__(self, email=None, password=None):
+        self.email = email
+        self.password = password
         self.browser = None
         self.current_url = None
         self.ga_prizes = {}
@@ -93,8 +93,10 @@ class GiveAwayBot(object):
         if init:
             email_msg = 'Enter your Amazon email address: '
             pass_msg = 'Enter your Amazon password: '
-            self.email = input(email_msg)
-            self.password = getpass.getpass(pass_msg)
+            if not self.email:
+                self.email = input(email_msg)
+            if not self.password:
+                self.password = getpass.getpass(pass_msg)
         self.browser = await get_browser()
         login_page = await self.browser.newPage()
         await login_page.setViewport({'width': 1900, 'height': 1000})
@@ -144,7 +146,7 @@ class GiveAwayBot(object):
         print(deep)
         # print(is_it_in_there(deep))
         if is_it_in_there(deep):
-            msg = Fore.RED + Style.BRIGHT + "    **** Already entered giveaway in the database. ****"
+            msg = Fore.YELLOW + Style.BRIGHT + "    **** Already entered giveaway in the database. ****"
             print(msg)
             return True
         if ga_result_element:
@@ -169,6 +171,7 @@ class GiveAwayBot(object):
             return False
     
     async def display_ga_result(self, prize_page):
+        await asyncio.sleep(random.randint(1, 5))
         await prize_page.waitForSelector('.qa-giveaway-result-text')
         ga_result_element = await prize_page.querySelector('.qa-giveaway-result-text')
         ga_result = await prize_page.evaluate(
@@ -186,133 +189,146 @@ class GiveAwayBot(object):
             print(msg)    
 
     async def no_req_giveaways(self):
-        try:
-            for prize in self.ga_prizes:
-                if self.ga_prizes[prize]['Entered'] is False:
+        max_retries = 3
+        for prize in self.ga_prizes:
+            retries = 0
+            done = False
+            if self.ga_prizes[prize]['Entered'] is False:
+                while not done:
                     self.display_ga_process(self.ga_prizes[prize]['Name'])
                     prize_page = await self.browser.newPage()
-                    await prize_page.setViewport({'width': 1400, 'height': 800})
-                    await prize_page.goto(self.ga_prizes[prize]['Url'])
-                    # print(self.ga_prizes[prize]['Url'])
-                    deep = self.ga_prizes[prize]['Url']
-                    # testing a random sleep methodology to avoid bot detection / captcha.
-                    ga_follow = await self.check_for_follow(prize_page)
-                    if ga_follow is True:
-                        msg = Fore.MAGENTA + Style.BRIGHT + "    **** Closing follow giveaway page. ****"
-                        print(msg)
-                        await asyncio.sleep(1)                     
-                        await prize_page.close()
-                    else:
-                        ga_entry = await self.check_for_entered(prize_page,deep)
-                        if ga_entry is False:
-                            await asyncio.sleep(numpy.random.choice(RANDOM_VAL))
-                            prize_box = await prize_page.querySelector('#box_click_target')
-                            enter_button = await prize_page.querySelector('#enterSubmitForm')
-                            enter_video = await prize_page.querySelector('#videoSubmitForm')
-                            video_text = await prize_page.querySelector('#giveaway-youtube-video-watch-text')
-                            book = await prize_page.querySelector('#submitForm')
-                            play_airy = await prize_page.querySelector('.airy-play')
-                            video_form = await prize_page.querySelector('#videoSubmitForm')
-                            continue_button = await prize_page.querySelector("input[name='continue']")
-                            sub_button = await prize_page.querySelector("input[name='subscribe']")                        
-                            enter = await prize_page.querySelector("input[name='enter']")                                                
-                            subscribe = await prize_page.querySelector("#ts_en_ns_subscribe")
-                            #follow_button = await prize_page.querySelector('#ts_en_fo_follow')
-                            string_val = await prize_page.content()
-                            #print("Key:")
-                            #print("Key ^")
-                            if prize_box:
-                                await asyncio.sleep(numpy.random.choice(RANDOM_VAL))
-                                await prize_box.click()
-                                msg = Fore.MAGENTA + Style.BRIGHT + "    **** I clicked the prize box. ****"
-                                print(msg)  
-                            elif enter_button:
-                                    await enter_button.click()
-                            elif book:
-                                    await book.click()                        
-                            elif video_text:
+                    try:
+                        await prize_page.setViewport({'width': 1400, 'height': 800})
+                        await prize_page.goto(self.ga_prizes[prize]['Url'])
+                        # print(self.ga_prizes[prize]['Url'])
+                        deep = self.ga_prizes[prize]['Url']
+                        # testing a random sleep methodology to avoid bot detection / captcha.
+                        ga_follow = await self.check_for_follow(prize_page)
+                        if ga_follow is True:
+                            msg = Fore.MAGENTA + Style.BRIGHT + "    **** Closing follow giveaway page. ****"
+                            print(msg)
+                            await asyncio.sleep(1)
+                            await prize_page.close()
+                        else:
+                            ga_entry = await self.check_for_entered(prize_page,deep)
+                            if ga_entry is False:
+                                await asyncio.sleep(random.randint(3, 21))
+                                prize_box = await prize_page.querySelector('#box_click_target')
+                                enter_button = await prize_page.querySelector('#enterSubmitForm')
+                                enter_video = await prize_page.querySelector('#videoSubmitForm')
+                                video_text = await prize_page.querySelector('#giveaway-youtube-video-watch-text')
+                                book = await prize_page.querySelector('#submitForm')
+                                play_airy = await prize_page.querySelector('.airy-play')
+                                video_form = await prize_page.querySelector('#videoSubmitForm')
+                                continue_button = await prize_page.querySelector("input[name='continue']")
+                                sub_button = await prize_page.querySelector("input[name='subscribe']")
+                                enter = await prize_page.querySelector("input[name='enter']")
+                                subscribe = await prize_page.querySelector("#ts_en_ns_subscribe")
+                                #follow_button = await prize_page.querySelector('#ts_en_fo_follow')
+                                string_val = await prize_page.content()
+                                #print("Key:")
+                                #print("Key ^")
+                                if prize_box:
+                                    await asyncio.sleep(random.randint(3, 21))
+                                    await prize_box.click()
+                                    msg = Fore.MAGENTA + Style.BRIGHT + "    **** I clicked the prize box. ****"
+                                    print(msg)
+                                elif enter_button:
+                                        await enter_button.click()
+                                elif book:
+                                        await book.click()
+                                elif video_text:
+                                        msg = Fore.MAGENTA + Style.BRIGHT + "    **** Waiting 30 seconds. ****"
+                                        print(msg)
+                                        await asyncio.sleep(28)
+                                        msg2 = Fore.MAGENTA + Style.BRIGHT + "    **** 30 Seconds is over, Entering Contest. ****"
+                                        print(msg2)
+                                        await enter_video.click()
+                                elif subscribe:
+                                        msg = Fore.MAGENTA + Style.BRIGHT + "    **** An Amazon sponsored giveaway. ****"
+                                        print(msg)
+                                        await sub_button.click()
+                                        await asyncio.sleep(2)
+                                        await enter.click()
+                                elif play_airy:
+                                    print(get_key_token(string_val))
+                                    print(get_key_stamp(string_val))
+                                    token = get_key_token(string_val)
+                                    stamp = get_key_stamp(string_val)
+                                    btoken = base64.urlsafe_b64encode(token.encode('UTF-8')).decode('ascii')
+                                    bstamp = base64.urlsafe_b64encode(stamp.encode('UTF-8')).decode('ascii')
+                                    # soup_token = BeautifulSoup(string_val)
+                                    # soup_stamp = BeautifulSoup(string_val)
+                                    # soup_t = soup_token.find('input', {"id": "invalidateRequirementCallbackToken"})
+                                    # soup_t['value'] = ""
+                                    # print(soup_t)
+                                    # soup_s = soup_stamp.find('input', {"id": "invalidateRequirementCallbackTimestamp"})
+                                    # soup_s['value'] = ""
+                                    # print(soup_s)
+                                    # print(soup_token)
+                                    # print(soup_stamp)
+                                    # http://pugstatus.com/test.js
+                                    # https://code.jquery.com/jquery-3.3.1.min.js
+                                    msg = Fore.MAGENTA + Style.BRIGHT + "    **** Amazon Video: Loading external javascript, bypassing video watching. ****"
+                                    print(msg)
+                                    await prize_page.addScriptTag(url='https://code.jquery.com/jquery-3.3.1.min.js')
+                                    await prize_page.addScriptTag(url='https://pugstatus.com/ago.php?token=' + btoken + '&stamp=' + bstamp + '')
+                                    #await asyncio.sleep(2)
+                                    # prize_page.querySelector('invalidateRequirementCallbackToken').value = get_key_token(string_val)
+                                    # prize_page.querySelector('invalidateRequirementCallbackTimestamp').value = get_key_stamp(string_val)
+                                    msg = Fore.MAGENTA + Style.BRIGHT + "    **** Amazon Video, Watching 30 sec then click giveaway. ****"
+                                    print(msg)
+                                    await play_airy.click()
                                     msg = Fore.MAGENTA + Style.BRIGHT + "    **** Waiting 30 seconds. ****"
                                     print(msg)
-                                    await asyncio.sleep(28)
-                                    msg2 = Fore.MAGENTA + Style.BRIGHT + "    **** 30 Seconds is over, Entering Contest. ****"
-                                    print(msg2)                        
-                                    await enter_video.click()
-                            elif subscribe:
-                                    msg = Fore.MAGENTA + Style.BRIGHT + "    **** An Amazon sponsored giveaway. ****"
+                                    await asyncio.sleep(32)
+                                    await continue_button.click()
+                                    msg = Fore.MAGENTA + Style.BRIGHT + "    **** 30 Seconds is over, Entering Contest. ****"
                                     print(msg)
-                                    await sub_button.click()
-                                    await asyncio.sleep(2)
-                                    await enter.click()
-                            elif play_airy:
-                                print(get_key_token(string_val))
-                                print(get_key_stamp(string_val))
-                                token = get_key_token(string_val)
-                                stamp = get_key_stamp(string_val)
-                                btoken = base64.urlsafe_b64encode(token.encode('UTF-8')).decode('ascii')
-                                bstamp = base64.urlsafe_b64encode(stamp.encode('UTF-8')).decode('ascii')
-                                # soup_token = BeautifulSoup(string_val)
-                                # soup_stamp = BeautifulSoup(string_val)
-                                # soup_t = soup_token.find('input', {"id": "invalidateRequirementCallbackToken"})
-                                # soup_t['value'] = ""
-                                # print(soup_t)
-                                # soup_s = soup_stamp.find('input', {"id": "invalidateRequirementCallbackTimestamp"})
-                                # soup_s['value'] = ""
-                                # print(soup_s)                            
-                                # print(soup_token)
-                                # print(soup_stamp)
-                                # http://pugstatus.com/test.js
-                                # https://code.jquery.com/jquery-3.3.1.min.js
-                                msg = Fore.MAGENTA + Style.BRIGHT + "    **** Amazon Video: Loading external javascript, bypassing video watching. ****"
-                                print(msg)
-                                await prize_page.addScriptTag(url='https://code.jquery.com/jquery-3.3.1.min.js')
-                                await prize_page.addScriptTag(url='https://pugstatus.com/ago.php?token=' + btoken + '&stamp=' + bstamp + '')
-                                #await asyncio.sleep(2)
-                                # prize_page.querySelector('invalidateRequirementCallbackToken').value = get_key_token(string_val)
-                                # prize_page.querySelector('invalidateRequirementCallbackTimestamp').value = get_key_stamp(string_val)
-                                msg = Fore.MAGENTA + Style.BRIGHT + "    **** Amazon Video, Watching 30 sec then click giveaway. ****"
-                                print(msg)
-                                await play_airy.click()
-                                msg = Fore.MAGENTA + Style.BRIGHT + "    **** Waiting 30 seconds. ****"
-                                print(msg)
-                                await asyncio.sleep(32)
-                                await continue_button.click()
-                                msg = Fore.MAGENTA + Style.BRIGHT + "    **** 30 Seconds is over, Entering Contest. ****"
-                                print(msg)                            
-                            # giveaways requiring a follow: doesn't work, but maybe it can be salvaged
-                            #elif follow_button:
-                                #await asyncio.sleep(1)
-                                #await follow_button.click()
-                                #msg = Fore.MAGENTA + Style.BRIGHT + "    **** Follow-giveaway :: Entered. ****"
-                                #print(msg)
-                                # alternatively, close page without entering:
-                                #await asyncio.sleep(1)
-                                #await prize_page.close()
-                                #msg = Fore.LIGHTRED_EX + Style.BRIGHT + "    **** Follow-giveaway :: Close page. ****"
-                                #print(msg)
+                                # giveaways requiring a follow: doesn't work, but maybe it can be salvaged
+                                #elif follow_button:
+                                    #await asyncio.sleep(1)
+                                    #await follow_button.click()
+                                    #msg = Fore.MAGENTA + Style.BRIGHT + "    **** Follow-giveaway :: Entered. ****"
+                                    #print(msg)
+                                    # alternatively, close page without entering:
+                                    #await asyncio.sleep(1)
+                                    #await prize_page.close()
+                                    #msg = Fore.LIGHTRED_EX + Style.BRIGHT + "    **** Follow-giveaway :: Close page. ****"
+                                    #print(msg)
+                                else:
+                                    await asyncio.sleep(1)
+                                    await prize_page.close()
+                                    msg = Fore.MAGENTA + Style.BRIGHT + "    **** Timed out :: Close page. ****"
+                                    print(msg)
+                                await asyncio.sleep(random.randint(3, 21))
+                                await self.display_ga_result(prize_page)
+                                await asyncio.sleep(1)
+                                check_and_insert(self.ga_prizes[prize]['Url'])
+                                # enter the url here as visited
+                                visit_page(self.ga_prizes[prize]['Url'])
+                                # self.current_url = next_page_href
+                                # check_and_insert(next_page_href)
+                                await prize_page.close()
                             else:
+                                msg = Fore.MAGENTA + Style.BRIGHT + "    **** All checks have been reached, moving on to next giveaway ****"
+                                print(msg)
                                 await asyncio.sleep(1)
                                 await prize_page.close()
-                                msg = Fore.MAGENTA + Style.BRIGHT + "    **** Timed out :: Close page. ****"
-                                print(msg)
-                            await asyncio.sleep(numpy.random.choice(RANDOM_VAL))
-                            await self.display_ga_result(prize_page)
+                        done = True
+                    # except errors.NetworkError as e:
+                    except Exception as e:
+                        print(Fore.RED + Style.BRIGHT + '    **** Encountered error: {}. Current Retry: {}'.format(str(e), retries))
+                        retries += 1
+                        if retries > max_retries:
+                            done = True
+                        msg = Fore.MAGENTA + Style.BRIGHT + "    **** Not sure what happened, skipping. ****"
+                        print(msg)
+                        try:
                             await asyncio.sleep(1)
-                            check_and_insert(self.ga_prizes[prize]['Url'])
-                            # enter the url here as visited
-                            visit_page(self.ga_prizes[prize]['Url'])
-                            # self.current_url = next_page_href
-                            # check_and_insert(next_page_href)
-                            await prize_page.close()                        
-                        else:
-                            msg = Fore.MAGENTA + Style.BRIGHT + "    **** All checks have been reached, moving on to next giveaway ****"
-                            print(msg)
-                            await asyncio.sleep(1)                     
                             await prize_page.close()
-        except errors.NetworkError as e:
-            msg = Fore.MAGENTA + Style.BRIGHT + "    **** Not sure what happened, skipping. ****"
-            print(msg)
-            await asyncio.sleep(1)                     
-            await prize_page.close()
+                        except Exception as nested:
+                            print(Fore.RED + Style.BRIGHT + "    **** Encountered another error, we're going to ignore the failure, and try to continue on and swallow this error. Nested error is: {}".format(str(nested)))
                     
     async def check_for_last_page(self, ga_page):
         last_page = await ga_page.xpath("//li[@class='a-disabled a-last']")
@@ -380,6 +396,6 @@ class GiveAwayBot(object):
         if page_giveaways:
             for giveaway in page_giveaways:
                 await create_ga_prize(giveaway)
-            await self.no_req_giveaways()
+            # await self.no_req_giveaways()
         else:
             print('*** no giveaways returned ***')

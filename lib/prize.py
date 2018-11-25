@@ -1,8 +1,3 @@
-import asyncio
-from pyppeteer import launch
-import getpass
-import logging
-
 class GiveAwayPrize(object):
     def __init__(self):
         self.prize_name = None
