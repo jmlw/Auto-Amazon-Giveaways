@@ -78,7 +78,7 @@ class GiveAwayBot(object):
         sign_in_button = '#signInSubmit'
 
         async def get_browser():
-            return await launch(headless=False)
+            return await launch(headless=False, dumpio=True)
 
         async def check_for_continue(login_page):
             continue_button = '#continue'
@@ -331,6 +331,7 @@ class GiveAwayBot(object):
                             print(Fore.RED + Style.BRIGHT + "    **** Encountered another error, we're going to ignore the failure, and try to continue on and swallow this error. Nested error is: {}".format(str(nested)))
                     
     async def check_for_last_page(self, ga_page):
+        time.sleep(1.0)
         last_page = await ga_page.xpath("//li[@class='a-disabled a-last']")
         if last_page:
             msg = Fore.LIGHTWHITE_EX + Style.BRIGHT + "**** The Last GiveAway Page has been reached.  Exiting... ****"
@@ -341,14 +342,15 @@ class GiveAwayBot(object):
 
     async def iterate_page(self, ga_page):
         try:
-            next_page = await ga_page.xpath("//li[@class='a-last']")
+            # next_page = await ga_page.xpath("//li[@class='a-last']")
+            next_page = await ga_page.querySelector('.a-last')
             if next_page:
                 next_page_href = await ga_page.evaluate(
                     '(next_page) => next_page.firstChild.href',
-                    next_page[0]
+                    next_page
                 )
                 msg = Fore.LIGHTGREEN_EX + Style.BRIGHT + "**** Moving to next giveaway page -> %s... ****" % (next_page_href)
-                print(msg)               
+                print(msg)
                 await ga_page.goto(next_page_href)
                 return ga_page
             else:
@@ -371,6 +373,7 @@ class GiveAwayBot(object):
                 '(prize_name_element) => prize_name_element.textContent',
                 prize_name_element
             )
+            # print("Checking prize: {}".format(prize_name))
             prize_req_element = await giveaway.querySelector('.giveawayParticipationInfoContainer')
             prize_req = await ga_page.evaluate(
                 '(prize_req_element) => prize_req_element.textContent',
@@ -395,7 +398,10 @@ class GiveAwayBot(object):
         page_giveaways = await self.get_page_giveaways(ga_page)
         if page_giveaways:
             for giveaway in page_giveaways:
-                await create_ga_prize(giveaway)
+                try:
+                    await create_ga_prize(giveaway)
+                except Exception as e:
+                    print("Failed to process giveaway item. This was probably a fake card in the grid.")
             # await self.no_req_giveaways()
         else:
             print('*** no giveaways returned ***')
